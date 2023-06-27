@@ -1,0 +1,762 @@
+# **Task 1**
+
+
+## Import Libraries
+
+#Import the necessary libraries
+import requests
+from bs4 import BeautifulSoup
+import json
+import re
+
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+nltk.download('stopwords')
+nltk.download('punkt')
+
+from urllib import robotparser
+import time
+from urllib.parse import urlparse
+from urllib.robotparser import RobotFileParser
+
+## Data collection
+
+#Check if crawling is allowed
+rp = robotparser.RobotFileParser()
+rp.set_url("https://pureportal.coventry.ac.uk/robots.txt")
+rp.read()
+
+if rp.can_fetch("*", "https://pureportal.coventry.ac.uk/en/organisations/research-centre-for-computational-science-and-mathematical-modell/publications/"):
+    print("Crawling is allowed for the website")
+else:
+    print("Crawling is not allowed for the website")
+
+import requests
+import time
+from urllib.parse import urlparse
+
+# Define the URL to crawl
+url = "https://pureportal.coventry.ac.uk/en/organisations/research-centre-for-computational-science-and-mathematical-modell/publications/"
+
+# Define the user agent for the crawler
+user_agent = "MyCrawler"
+
+# Send a request to the robots.txt file of the domain
+domain_name = urlparse(url).netloc
+robots_url = f"http://{domain_name}/robots.txt"
+response = requests.get(robots_url)
+
+# Parse the robots.txt file to check if the URL is allowed
+allowed = True
+crawl_delay = 0
+disallowed_paths = []
+
+if response.status_code == 200:
+    robots_txt = response.text
+    
+    for line in robots_txt.splitlines():
+        if "User-agent:" in line:
+            # Check if the User-agent matches the crawler's user agent
+            if line.split()[1] == "*" or line.split()[1] == user_agent:
+                disallowed_paths = []
+        elif "Disallow:" in line:
+            # Check if the URL is disallowed
+            disallowed_path = line.split()[1]
+            if disallowed_path != "/":
+                disallowed_paths.append(disallowed_path)
+        elif "Crawl-delay:" in line:
+            # Get the crawl delay set in the robots.txt file
+            crawl_delay = int(line.split()[1])
+
+    for disallowed_path in disallowed_paths:
+        if disallowed_path in url:
+            allowed = False
+            break
+
+if allowed:
+    # Wait for the crawl delay time
+    time.sleep(crawl_delay)
+
+    # Send a request to the URL
+    response = requests.get(url, headers={"User-Agent": user_agent})
+
+    # Parse HTML content
+    soup = BeautifulSoup(response.content, "html.parser")
+    
+    # Check if the crawler is polite
+    if response.headers.get("X-Robots-Tag") == "noindex, nofollow":
+        print("Crawler is not polite")
+    else:
+        print("Crawler is polite")
+else:
+    print("URL is not allowed to be crawled") 
+
+# Initialize the session
+session = requests.Session()
+session.headers.update({"User-Agent": USER_AGENT})
+
+#Define base URL
+base_url = "https://pureportal.coventry.ac.uk"
+# Send a GET request to the website
+url = "https://pureportal.coventry.ac.uk/en/organisations/research-centre-for-computational-science-and-mathematical-modell/publications/"
+response = session.get(url)
+#Parse the response using Beautiful Soup
+soup = BeautifulSoup(response.content, "html.parser")
+
+# Loop through all pages and scrape publication links
+publication_links = []
+# Find all publication links on the page
+for link in soup.find_all("a", {"class": "link"}):
+    publication_links.append(link.get("href"))
+    
+next_page = soup.find("li", {"class": "next"})
+while next_page:
+    # Get URL of next page
+    next_page_url = base_url + next_page.find("a").get("href")
+    # Send HTTP request
+    response = requests.get(next_page_url)
+
+    # Parse HTML content
+    soup = BeautifulSoup(response.content, "html.parser")
+
+    # Find all publication links on the page
+    for link in soup.find_all("a", {"class": "link"}):
+        publication_links.append(link.get("href"))
+
+    # Check if there is a next page
+    next_page = soup.find("li", {"class": "next"})
+
+publication_identifier = 'https://pureportal.coventry.ac.uk/en/publications/'
+publication_links_list = [link for link in publication_links if publication_identifier in link]
+print(len(publication_links_list))
+
+def extract_data(link):
+    try:
+        publication_info = []
+        # Send HTTP request
+        response = requests.get(link)
+
+        # Parse HTML content
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Extract publication data
+        title = soup.find("div", {"class": "rendering"}).text.strip()
+        authors = [author.text.strip() for author in soup.find_all("p", {"class": "relations persons"})]
+        csm_authors = [csm_author.text.strip() for csm_author in soup.find_all("a", {"class": "link person"})]
+        csm_authors_link = [csm_author.get("href") for csm_author in soup.find_all("a", {"class": "link person"})]
+        abstract = soup.find("div", {"class": "textblock"})
+        if abstract is not None:
+            abstract = abstract.text.strip()
+        else:
+            abstract = 'No abstract'
+        keywords = [keyword.text.strip() for keyword in soup.find_all("li", {"class": "userdefined-keyword"})]
+        if not keywords:
+            keywords = 'No keywords'
+        date = soup.find("span", {"class": "date"}).text.strip()
+        
+        publication_info.append({
+        "Title": title,
+        "Authors": authors,
+        "CSM Authors": csm_authors,
+        "CSM Authors Link": csm_authors_link,
+        "Abstract": abstract,
+        "Keywords": keywords,
+        "Date": date,
+        "Publication link": link
+            
+        })
+        return publication_info
+    except Exception as e: 
+        pass
+
+publications_info = []
+for publication_link in publication_links_list:
+    link_data = extract_data(publication_link)
+    publications_info.extend(link_data)
+
+# Create a dictionary to store the number of publications per staff
+publications_per_staff = {}
+
+for publication_link in publication_links_list:
+    link_data = extract_data(publication_link)
+    publications_info.extend(link_data)
+    
+    # Add 1 to the number of publications for each staff member
+    for staff_member in link_data[0]["CSM Authors"]:
+        if staff_member in publications_per_staff:
+            publications_per_staff[staff_member] += 1
+        else:
+            publications_per_staff[staff_member] = 1
+
+# Print the number of staff whose publications are crawled
+print(f"Number of staff whose publications are crawled: {len(publications_per_staff)}")
+
+# Print the maximum number of publications per staff
+max_publications = max(publications_per_staff.values())
+print(f"Maximum number of publications per staff: {max_publications}")
+
+
+# Save publication information to a JSON file
+with open("publications_info.json", "w") as f:
+    json.dump(publications_info, f)
+
+## Data Pre-processing
+
+# Load publications from JSON file
+with open('publications_info.json', 'r') as f:
+    publications_info = json.load(f)
+
+import json
+import string
+import re
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem.porter import PorterStemmer
+# Define set of stopwords
+stop_words = set(stopwords.words('english'))
+
+# Define Porter stemmer
+stemmer = PorterStemmer()
+
+# Define function to preprocess text
+def preprocess_text(text):
+    # Convert to lowercase
+    text = text.lower()
+    
+    # Remove punctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    
+    # Tokenize text
+    tokens = word_tokenize(text)
+    
+    # Remove stopwords
+    filtered_tokens = [token for token in tokens if token not in stop_words]
+    
+    # Stem tokens
+    stemmed_tokens = [stemmer.stem(token) for token in filtered_tokens]
+    
+    # Rejoin stemmed tokens into a string
+    preprocessed_text = ' '.join(stemmed_tokens)
+    
+    return preprocessed_text
+
+preprocessed_publications = []
+for publication in publications_info:
+        if publication is not None:
+            title = publication["Title"]
+            abstract = publication['Abstract']
+            authors = publication['Authors']
+            csm_authors = publication['CSM Authors']
+            keywords = publication['Keywords']
+            date = publication['Date']
+            preprocessed_title = preprocess_text(title)
+            preprocessed_abstract = preprocess_text(abstract)
+            preprocessed_authors = [preprocess_text(author) for author in authors]
+            preprocessed_authors = ", ".join(preprocessed_authors)
+            preprocessed_csm_authors = [preprocess_text(csm_author) for csm_author in csm_authors]
+            preprocessed_csm_authors = ", ".join(preprocessed_csm_authors)
+            preprocessed_keywords = [preprocess_text(keyword) for keyword in keywords]
+            preprocessed_keywords = ", ".join(preprocessed_keywords)
+            preprocessed_date = preprocess_text(date)
+            preprocessed_publications.append({ 'processed_title': preprocessed_title, 'processed_abstract': preprocessed_abstract, 
+                                  'processed_authors':preprocessed_authors, 'processed_csm_authors':preprocessed_csm_authors,
+                                   'processed_keywords':preprocessed_keywords, 'processed_date':preprocessed_date})
+
+# Save preprocessed data to a JSON file
+with open('preprocessed_publications.json', 'w') as f:
+    json.dump(preprocessed_publications, f)
+
+print(len(preprocessed_publications))
+
+## Indexing 
+
+import json
+from math import log
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
+
+import json
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+from nltk.corpus import stopwords
+import re
+
+# Load preprocessed publication data from JSON file
+with open('preprocessed_publications.json', 'r') as f:
+    preprocessed_data = json.load(f)
+
+# Define function to tokenize text
+def tokenize(text):
+    return re.findall('\w+', text.lower())
+
+# Initialize inverted index and document frequency dictionary
+inverted_index = {}
+document_frequencies = {}
+
+# Loop through each publication in the preprocessed data
+for i, publication in enumerate(preprocessed_data):
+    # Combine all text fields
+    full_text = ' '.join([publication['processed_title'], publication['processed_abstract'], 
+                          publication['processed_authors'], publication['processed_csm_authors'],
+                        publication['processed_keywords']])
+    
+    # Tokenize text and remove stop words
+    tokens = word_tokenize(full_text)
+    stop_words = set(stopwords.words('english'))
+    filtered_tokens = [token for token in tokens if token not in stop_words]
+    
+    # Stem tokens using Porter stemmer
+    stemmer = PorterStemmer()
+    stemmed_tokens = [stemmer.stem(token) for token in filtered_tokens]
+    
+    # Add terms to inverted index
+    for term in stemmed_tokens:
+        if term not in inverted_index:
+            inverted_index[term] = {"document_ids": [i], "term_frequency": 1}
+            document_frequencies[term] = 1
+        else:
+            if i not in inverted_index[term]["document_ids"]:
+                inverted_index[term]["document_ids"].append(i)
+            inverted_index[term]["term_frequency"] += 1
+            document_frequencies[term] += 1
+
+# Save inverted index and document frequencies to JSON files
+with open('inverted_index.json', 'w') as f:
+    json.dump(inverted_index, f)
+    
+with open('document_frequencies.json', 'w') as f:
+    json.dump(document_frequencies, f)
+
+## Search query
+
+import warnings
+warnings.filterwarnings('ignore')
+
+import math
+
+def search_query(query, n_clusters=0):
+    # Load inverted index from JSON file
+    with open('inverted_index.json', 'r') as f:
+        inverted_index = json.load(f)
+    # Load publications info from JSON file and convert to dictionary
+    with open('publications_info.json', 'r') as f:
+        publications_info_list = json.load(f)
+    publications_info = {i: publication for i, publication in enumerate(publications_info_list)}
+    # Load document frequencies from JSON file
+    with open('document_frequencies.json', 'r') as f:
+        document_frequencies = json.load(f)
+    # Tokenize query
+    tokens = word_tokenize(query.lower())
+    filtered_tokens = [stemmer.stem(token) for token in tokens if token not in stop_words]
+    # Initialize document scores
+    # Initialize document scores
+    document_scores = {}
+    for term in filtered_tokens:
+        if term in inverted_index:
+            idf = math.log(len(publications_info) / document_frequencies[term])
+            for document_id in inverted_index[term]['document_ids']:
+                if document_id not in document_scores:
+                    document_scores[document_id] = 0
+                publication = publications_info[document_id]
+                if 'authors' in publication and any('csm authors' in author.lower() for author in publication['authors']):
+                    document_scores[document_id] += inverted_index[term]['term_frequency'] * idf
+    
+    # Sort document scores by relevance
+    sorted_document_scores = sorted(document_scores.items(), key=lambda x: x[1], reverse=True)
+    # Create a list of publication texts
+    publication_texts = []
+    # Filter publications with no CSM author
+    filtered_sorted_document_scores = []
+    for document_id, score in sorted_document_scores:
+        publication = publications_info[document_id]
+        if 'CSM Authors' in publication and publication['CSM Authors']:
+            full_text = ' '.join([str(v) for v in publication.values()])
+            filtered_sorted_document_scores.append((document_id, score, full_text))
+    # Perform clustering if n_clusters is provided
+    if n_clusters > 0:
+        # Create TF-IDF vectorizer and transform publication texts
+        tfidf_vectorizer = TfidfVectorizer(stop_words='english')
+        X = tfidf_vectorizer.fit_transform(publication_texts)
+        # Perform k-means clustering
+        kmeans = KMeans(n_clusters=n_clusters, random_state=0)
+        cluster_labels = kmeans.fit_predict(X)
+        # Add cluster label to each search result
+        results = []
+        for i, (document_id, score, full_text) in enumerate(filtered_sorted_document_scores):
+            results.append((full_text, score, cluster_labels[i]))
+    # Otherwise, just return search results
+    else:
+        results = []
+        for document_id, score, full_text in filtered_sorted_document_scores:
+            results.append((full_text, score))
+    # Return list of tuples
+    return results
+
+search_query("blockchain technology")
+
+## Queries
+
+
+
+*   "machine learning, n_clusters=5"
+*   "Impact of COVID-19 on global economy"
+
+*   "Role of genetics in cancer"
+
+*   "blockchain tehchnologyy"
+*   "Impact of social media on mental health"
+
+
+*   "Artificial intelligence", n_clusters = 3"
+
+
+
+
+
+Single-word queries:
+* "neural"
+* "networks"
+
+Multi-word queries:
+* "machine learning"
+* "artificial intelligence"
+
+
+Phrases and exact matches:
+* "natural language processing techniques"
+* "time series forecasting methods"
+* "image segmentation algorithms"
+
+Queries with special characters or punctuation:
+* "Impact of COVID-19 on global economy"
+* "Role of genetics in cancer"
+
+Queries with synonyms or related words:
+* "unsupervised learning"
+* "predictive modeling"
+
+Queries with spelling variations:
+* "blockchain tehchnologyy"
+* "categorization"
+
+Queries with different word orders:
+* "processing image"
+* "series time analysis"
+
+Queries that should return no results:
+* "xyzabc"
+* "qwertyuiop"
+* "foo bar baz"
+
+
+Mixed-case queries:
+* "DeEp LeArNiNg"
+* "DaTa AnAlYsIs"
+
+
+
+
+# **Task 2**
+
+%matplotlib inline
+import matplotlib.pyplot as plt
+import seaborn as sns; sns.set() # for plot styling
+import numpy as np
+import json
+
+!pip install feedparser
+
+import feedparser
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+
+# Function to get entries from a feed URL
+def get_feed_entries(feed_url):
+    feed = feedparser.parse(feed_url)
+    entries = feed.entries
+    return entries
+
+# RSS feed URLs
+sport_url_1 = "https://www.theguardian.com/uk/sport/rss"
+sport_url_2 = "http://rss.cnn.com/rss/edition_sport.rss"
+sport_url_3 = "https://www.espn.com/espn/rss/news"
+sport_url_4 = "https://api.foxsports.com/v2/content/optimized-rss?partnerKey=MB0Wehpmuj2lUhuRhQaafhBjAJqaPU244mlTDK1i&size=30&tags=fs/nba"
+
+# Get entries from each feed
+sport_entries_1 = get_feed_entries(sport_url_1)[:100] # Get first 100 sport entries
+sport_entries_2 = get_feed_entries(sport_url_2)[:100] # Get first 100 sport entries
+sport_entries_3 = get_feed_entries(sport_url_3)[:100] # Get first 100 sport entries
+sport_entries_4 = get_feed_entries(sport_url_4)[:100] # Get first 100 sport entries
+
+sport_entries = sport_entries_1 + sport_entries_2 + sport_entries_3 + sport_entries_4
+
+tech_url_1 = "https://www.theguardian.com/uk/technology/rss"
+tech_url_2 = "http://rss.cnn.com/rss/edition_technology.rss"
+tech_url_3 = "https://www.techadvisor.co.uk/latest/rss"
+tech_url_4 = "https://www.theregister.co.uk/"
+tech_url_5 = "https://www.computerworld.com/uk/index.rss"
+
+tech_entries_1 = get_feed_entries(tech_url_1)[:100] # Get first 100 technology entries
+tech_entries_2 = get_feed_entries(tech_url_2)[:100] # Get first 100 technology entries
+tech_entries_3 = get_feed_entries(tech_url_3)[:100] # Get first 100 technology entries
+tech_entries_4 = get_feed_entries(tech_url_4)[:100] # Get first 100 technology entries
+tech_entries_5 = get_feed_entries(tech_url_5)[:100] # Get first 100 technology entries
+
+tech_entries = tech_entries_1 + tech_entries_2 + tech_entries_3 + tech_entries_4 + tech_entries_5
+
+climate_url_1 = "https://www.theguardian.com/environment/climate-crisis/rss"
+climate_url_2 = "https://www.nature.com/nclimate.rss"
+climate_url_3 = "https://yaleclimateconnections.org/feed/"
+climate_url_4 = "https://climatechangedispatch.com/feed/"
+
+climate_entries_1 = get_feed_entries(climate_url_1)[:100] # Get first 50 climate entries
+climate_entries_2 = get_feed_entries(climate_url_2)[:100] # Get first 150 climate entries
+climate_entries_3 = get_feed_entries(climate_url_3)[:100] # Get first 150 climate entries
+climate_entries_4 = get_feed_entries(climate_url_4)[:100] # Get first 150 climate entries
+
+climate_entries = climate_entries_1 + climate_entries_2 + climate_entries_3 + climate_entries_4
+
+print(len(sport_entries))
+print(len(tech_entries))
+print(len(climate_entries))
+
+# Combine entries into one list
+all_entries = sport_entries + tech_entries + climate_entries
+
+len(all_entries)
+
+# Save publication information to a JSON file
+with open("all_entries.json", "w") as f:
+    json.dump(all_entries, f)
+
+# Create a list of article titles and their corresponding titles
+titles = []
+for entry in all_entries:
+    titles.append(entry.title)
+
+import nltk
+nltk.download("stopwords")
+from nltk.corpus import stopwords
+
+sw = stopwords.words('english')
+print(sw)
+
+nltk.download("punkt")
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+
+ps = PorterStemmer()
+filtered_docs = []
+for doc in titles:
+    tokens = word_tokenize(doc)
+    print("----------")
+    print(titles)
+    tmp = ""
+    for w in tokens:
+        if w not in sw:
+            tmp += ps.stem(w) + " "
+    print("--------------")
+    print(tmp)
+    filtered_docs.append(tmp)
+
+print(filtered_docs)
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+vectorizer = TfidfVectorizer()
+X = vectorizer.fit_transform(filtered_docs)
+print(X.todense())
+
+import warnings
+warnings.filterwarnings('ignore')
+
+# Initialize KMeans model
+model = KMeans(random_state=42)
+
+# Instantiate the KElbowVisualizer with the metric to use for scoring
+visualizer = KElbowVisualizer(model, k=(2,20), metric='silhouette')
+
+# Fit the data to the visualizer
+visualizer.fit(X)
+
+# Display the plot
+visualizer.show()
+#kelbow_visualizer(KMeans(random_state=42), X, k=(2,10))
+
+from sklearn.datasets import make_blobs
+import matplotlib.pyplot as plt
+from yellowbrick.cluster import KElbowVisualizer
+import numpy as np
+from sklearn.cluster import KMeans
+from yellowbrick.cluster.elbow import kelbow_visualizer
+from yellowbrick.datasets.loaders import load_nfl
+# Convert sparse matrix to dense numpy array
+X = X.toarray()
+
+# Instantiate the clustering model and visualizer
+model = KMeans(random_state=42)
+visualizer = KElbowVisualizer(model, k=(2,10))
+
+# Fit and visualize the data
+visualizer.fit(X)
+visualizer.show()
+
+#When K = 4
+from sklearn.cluster import KMeans
+K = 4
+model = KMeans(n_clusters=K, max_iter=100, random_state=42)
+model.fit(X)
+
+print("Cluster no. of input documents respectively:")
+print(model.labels_)
+
+#When k = 2
+K = 2
+model = KMeans(n_clusters=K, max_iter=100, random_state=42)
+model.fit(X)
+
+print("Cluster no. of input documents respectively:")
+print(model.labels_)
+
+#When K = 4
+test_documents = ['A new technology for renewable energy', 
+                  'The latest sports news', 
+                  'Climate change is a global issue']
+
+filtered_test_docs = []
+for doc in test_documents:
+    tokens = word_tokenize(doc)
+    print(doc)
+    tmp = ""
+    for w in tokens:
+        if w not in sw:
+            tmp += ps.stem(w) + " "
+    print(tmp)
+    filtered_test_docs.append(tmp)
+
+print(filtered_test_docs)
+
+Y = vectorizer.transform([filtered_test_docs[0]])
+prediction = model.predict(Y)
+print(prediction)
+
+Y = vectorizer.transform([filtered_test_docs[1]])
+prediction = model.predict(Y)
+print(prediction)
+
+Y = vectorizer.transform([filtered_test_docs[2]])
+prediction = model.predict(Y)
+print(prediction)
+
+#When K = 2
+test_documents = ['A new technology for renewable energy', 
+                  'The latest sports news', 
+                  'Climate change is a global issue']
+
+filtered_test_docs = []
+for doc in test_documents:
+    tokens = word_tokenize(doc)
+    print(doc)
+    tmp = ""
+    for w in tokens:
+        if w not in sw:
+            tmp += ps.stem(w) + " "
+    print(tmp)
+    filtered_test_docs.append(tmp)
+
+print(filtered_test_docs)
+
+Y = vectorizer.transform([filtered_test_docs[0]])
+prediction = model.predict(Y)
+print(prediction)
+
+Y = vectorizer.transform([filtered_test_docs[1]])
+prediction = model.predict(Y)
+print(prediction)
+
+Y = vectorizer.transform([filtered_test_docs[2]])
+prediction = model.predict(Y)
+print(prediction)
+
+#when K = 4
+from sklearn.metrics import silhouette_score
+# evaluate the model using inertia and silhouette score
+inertia = model.inertia_
+silhouette = silhouette_score(X, model.labels_)
+
+print(f"Inertia: {inertia:.2f}")
+print(f"Silhouette Score: {silhouette:.2f}")
+
+#when K = 2
+from sklearn.metrics import silhouette_score
+# evaluate the model using inertia and silhouette score
+inertia = model.inertia_
+silhouette = silhouette_score(X, model.labels_)
+
+print(f"Inertia: {inertia:.2f}")
+print(f"Silhouette Score: {silhouette:.2f}")
+
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
+# Perform PCA on the feature matrix X
+pca = PCA(n_components=2)
+X_reduced = pca.fit_transform(X)
+
+# Plot the clusters
+colors = ['r', 'g', 'b', 'y']
+for i in range(K):
+    plt.scatter(X_reduced[model.labels_ == i, 0], X_reduced[model.labels_ == i, 1], c=colors[i % len(colors)], label='Cluster {}'.format(i))
+
+plt.legend()
+plt.show()
+
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
+# Perform PCA on the feature matrix X
+pca = PCA(n_components=2)
+X_reduced = pca.fit_transform(X)
+
+# Plot the clusters
+colors = ['r', 'g', 'b', 'y']
+for i in range(K):
+    plt.scatter(X_reduced[model.labels_ == i, 0], X_reduced[model.labels_ == i, 1], c=colors[i % len(colors)], label='Cluster {}'.format(i))
+
+plt.legend()
+plt.show()
+
+from wordcloud import WordCloud, STOPWORDS 
+import matplotlib.pyplot as plt 
+
+import json
+
+# Load the JSON file
+with open('all_entries.json', 'r') as f:
+    all_entries = json.load(f)
+
+# Extract the text from the JSON objects
+title = ''
+for obj in all_entries:
+    title += obj['title']
+
+# Create the WordCloud object
+wordcloud = WordCloud(width=800, height=800, 
+                      background_color='white', 
+                      stopwords=set(STOPWORDS), 
+                      min_font_size=10).generate(title) 
+
+# Plot the WordCloud
+plt.figure(figsize=(8, 8), facecolor=None) 
+plt.imshow(wordcloud) 
+plt.axis("off") 
+plt.tight_layout(pad=0) 
+plt.show()
+
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+import sklearn.metrics as metrics
